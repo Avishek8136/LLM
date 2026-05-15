@@ -73,8 +73,9 @@ class Config:
     # Gradient checkpointing (trades compute for memory)
     use_gradient_checkpointing: bool = True
 
-    # Mixed precision
-    mixed_precision: str = "fp16"  # fp16, bf16, no — fp16 for P100/T4 compatibility
+    # Mixed precision — FP16/BF16 can destabilize BitNet quantization.
+    # Use "no" (FP32) for stability, "fp16" for speed on supported GPUs.
+    mixed_precision: str = "no"  # no, fp16, bf16
 
     # ── Dataset ────────────────────────────────────────────────────────
     datasets: list[str] = [

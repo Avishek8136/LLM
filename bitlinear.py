@@ -108,8 +108,10 @@ class BitLinear(nn.Module):
         w_q, alpha = self._quantize_weight(self.weight)
         x_q, beta = self._quantize_activation(x)
         
-        # y = alpha * beta ⊙ (X_q @ W_q^T)
-        y = F.linear(x_q, w_q)  # (batch, seq, out)
+        # Quantized matmul can overflow FP16 (1024 * 127 = 130048 > 65504).
+        # Force FP32 for this operation regardless of surrounding autocast.
+        with torch.autocast(device_type="cuda", enabled=False):
+            y = F.linear(x_q.float(), w_q.float())
         y = y * alpha * beta    # broadcast: (batch,seq,out) * scalar * (batch,seq,1)
         return y
     
@@ -147,5 +149,7 @@ class BitLinearInferenceOnly(BitLinear):
         w_q = self._cached_w_q
         alpha = self._cached_alpha
         x_q, beta = self._quantize_activation(x)
-        y = F.linear(x_q, w_q) * alpha * beta
+        with torch.autocast(device_type="cuda", enabled=False):
+            y = F.linear(x_q.float(), w_q.float())
+        y = y * alpha * beta
         return y
