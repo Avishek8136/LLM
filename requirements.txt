@@ -1,15 +1,19 @@
-# Core deep learning
-torch>=2.2.0
-torchvision>=0.17.0
-torchaudio>=2.2.0
+# ── Core deep learning ──────────────────────────────────────────────
+# NOTE: P100 GPUs (sm_60) require PyTorch <= 2.0.x with CUDA 11.8.
+# For P100 / T4: pip install torch==2.0.1+cu118 --index-url https://download.pytorch.org/whl/cu118
+# For A100 / RTX 40xx (sm_80+): pip install torch>=2.2.0 (includes SDPA optimizations)
+# The code works on both versions — install the right PyTorch for your GPU.
+torch>=2.0.1
+torchvision>=0.15.2
+torchaudio>=2.0.2
 
-# HuggingFace ecosystem
-transformers>=4.40.0
+# ── HuggingFace ecosystem ───────────────────────────────────────────
+transformers>=4.35.0
 tokenizers>=0.15.0
 datasets>=2.16.0
-accelerate>=0.27.0
+accelerate>=0.25.0
 
-# Training utilities
+# ── Training utilities ──────────────────────────────────────────────
 wandb>=0.16.0
 numpy>=1.24.0
 safetensors>=0.4.0

@@ -1,6 +1,12 @@
 """
 Configuration for MoE-BitNet English LLM training.
 All hyperparameters are adjustable here. Compatible with P100 (16GB), T4x2 (32GB), RTX (24GB+).
+
+GPU COMPATIBILITY NOTE:
+  P100  = sm_60 → needs PyTorch <= 2.0.x + CUDA 11.8
+    pip install torch==2.0.1+cu118 --index-url https://download.pytorch.org/whl/cu118
+  T4    = sm_75 → PyTorch 2.0.x - 2.4.x
+  RTX 30xx/40xx = sm_80+ → any PyTorch >= 2.0
 """
 
 import os
@@ -144,3 +150,57 @@ class LargeConfig(Config):
     gradient_accumulation_steps: int = 8
     max_seq_len: int = 4096
     seq_len: int = 4096
+
+
+# ── GPU compatibility detection ─────────────────────────────────────────
+def check_gpu_compatibility() -> str:
+    """Check GPU and PyTorch compatibility. Returns 'ok', 'warn', or 'error'."""
+    import torch
+    
+    if not torch.cuda.is_available():
+        return "no_cuda"
+    
+    capability = torch.cuda.get_device_capability()
+    cc = capability[0] * 10 + capability[1]  # e.g. (6, 0) → 60
+    
+    # Pytorch sm support: check if current torch was compiled for this GPU
+    try:
+        # Quick test kernel launch
+        test_tensor = torch.zeros(1, device="cuda")
+        _ = test_tensor + 1  # simplest kernel op
+    except RuntimeError as e:
+        if "no kernel image" in str(e):
+            print(f"""
+╔══════════════════════════════════════════════════════════════════╗
+║  CUDA COMPATIBILITY ERROR                                       ║
+╠══════════════════════════════════════════════════════════════════╣
+║  GPU: sm_{cc} (compute capability {capability[0]}.{capability[1]})
+║  Installed PyTorch: {torch.__version__}
+║
+║  Your PyTorch doesn't support this GPU. Fix:
+║
+║  For P100 (sm_60) / older GPUs:
+║    pip install torch==2.0.1+cu118 \\
+║      --index-url https://download.pytorch.org/whl/cu118
+║
+║  For T4 (sm_75):
+║    pip install torch==2.1.2+cu118 \\
+║      --index-url https://download.pytorch.org/whl/cu118
+║
+║  Then re-run the training script.
+╚══════════════════════════════════════════════════════════════════╝
+""")
+            return "error"
+        raise
+    
+    gpu_name = torch.cuda.get_device_name(0)
+    gpu_mem = torch.cuda.get_device_properties(0).total_mem / 1024**3
+    
+    print(f"GPU: {gpu_name} ({gpu_mem:.0f}GB, sm_{cc})")
+    print(f"PyTorch: {torch.__version__} | CUDA: {torch.version.cuda}")
+    
+    if gpu_mem < 10:
+        print(f"  Warning: Low VRAM ({gpu_mem:.0f}GB). Use SmallConfig or reduce micro_batch_size.")
+        return "warn"
+    
+    return "ok"

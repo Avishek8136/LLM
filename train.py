@@ -23,6 +23,7 @@ from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import CosineAnnealingLR, LambdaLR
 
 from config import Config
+from config import check_gpu_compatibility
 from model import BitNetTransformer, create_model
 from model_components import average_quantization_error
 
@@ -455,6 +456,16 @@ def main(config: Config | None = None):
         os.makedirs(config.log_dir, exist_ok=True)
         print(f"Device: {device}")
         print(f"Checkpoint dir: {config.checkpoint_dir}")
+        
+        gpu_status = check_gpu_compatibility()
+        if gpu_status == "error":
+            print("GPU incompatible with installed PyTorch. See message above for fix.")
+            if not use_ddp:
+                sys.exit(1)
+        elif gpu_status == "no_cuda":
+            print("Warning: No CUDA GPU detected. Running on CPU — training will be very slow.")
+        elif gpu_status == "warn":
+            print("Continuing with warnings (low VRAM or older GPU).")
     
     # ── Data pipeline ───────────────────────────────────────────────
     if is_main_process():
