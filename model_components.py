@@ -203,11 +203,11 @@ class GroupedQueryAttention(nn.Module):
 
 
 # ── FFN with Squared ReLU activation ────────────────────────────────────
-class SquaredReLUFFN(nn.Module):
+class ReLUFFN(nn.Module):
     """
-    Feed-forward network using ReLU² activation (per BitNet stability spec).
-    Architecture: gate + up → ReLU²(gate) * up → down
-    Equivalent to GLU variant with ReLU² instead of SiLU.
+    Feed-forward network with ReLU-gated activation (GLU variant).
+    Architecture: gate + up → ReLU(gate) * up → down
+    Uses standard ReLU (not squared) to avoid activation amplification.
     """
     
     def __init__(self, d_model: int, ffn_dim: int):
@@ -217,7 +217,7 @@ class SquaredReLUFFN(nn.Module):
         self.down_proj = BitLinear(ffn_dim, d_model)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        gate = F.relu(self.gate_proj(x)).square()  # ReLU²
+        gate = F.relu(self.gate_proj(x))
         up = self.up_proj(x)
         return self.down_proj(gate * up)
 
@@ -229,7 +229,7 @@ class TransformerBlock(nn.Module):
     Uses:
       - RMSNorm (no bias)
       - GQA attention with RoPE
-      - SquaredReLU FFN
+      - ReLU-gated FFN
       - All linear layers are BitLinear
     """
     
@@ -252,7 +252,7 @@ class TransformerBlock(nn.Module):
             rope_theta=rope_theta,
         )
         self.ffn_norm = RMSNorm(d_model)
-        self.ffn = SquaredReLUFFN(d_model=d_model, ffn_dim=ffn_dim)
+        self.ffn = ReLUFFN(d_model=d_model, ffn_dim=ffn_dim)
     
     def forward(
         self,

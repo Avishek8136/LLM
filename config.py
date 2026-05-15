@@ -74,7 +74,7 @@ class Config:
     use_gradient_checkpointing: bool = True
 
     # Mixed precision
-    mixed_precision: str = "bf16"  # bf16, fp16, no
+    mixed_precision: str = "fp16"  # fp16, bf16, no — fp16 for P100/T4 compatibility
 
     # ── Dataset ────────────────────────────────────────────────────────
     datasets: list[str] = [

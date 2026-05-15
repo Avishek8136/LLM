@@ -264,8 +264,9 @@ def train_epoch(
     epoch: int,
     global_step: int,
     scaler,
+    amp_dtype,
     log_file: str | None = None,
-) -> int:
+) -> tuple[int, float]:
     """Train one epoch. Returns updated global_step."""
     model.train()
     total_loss = 0.0
@@ -280,11 +281,10 @@ def train_epoch(
         labels = batch["labels"].to(device)
         
         # Forward with mixed precision
-        if scaler:
-            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+        if amp_dtype is not None:
+            with torch.autocast(device_type="cuda", dtype=amp_dtype):
                 outputs = model(input_ids, labels=labels)
                 loss = outputs["loss"]
-                # Scale loss for gradient accumulation
                 loss = loss / config.gradient_accumulation_steps
         else:
             outputs = model(input_ids, labels=labels)
@@ -321,12 +321,10 @@ def train_epoch(
             # Logging
             if is_main_process() and global_step % config.log_every_steps == 0:
                 elapsed = time.time() - start_time
-                steps_done = global_step - (epoch * len(train_loader) // config.gradient_accumulation_steps)
-                steps_done = max(1, steps_done)
-                avg_loss = total_loss / steps_done
+                avg_loss = total_loss / (batch_idx + 1)
                 lr = scheduler.get_last_lr()[0]
                 
-                ppl = math.exp(min(avg_loss, 20))
+                ppl = math.exp(min(avg_loss, 100))  # clamp for display safety
                 
                 log_msg = (
                     f"Epoch {epoch} | Step {global_step}/{config.total_steps} | "
@@ -435,7 +433,7 @@ def evaluate(
     model.train()
     
     avg_loss = total_loss / max(1, total_tokens)
-    ppl = math.exp(min(avg_loss, 20))
+    ppl = math.exp(min(avg_loss, 100))
     
     return {"val_loss": avg_loss, "val_ppl": ppl}
 
@@ -547,13 +545,18 @@ def main(config: Config | None = None):
     
     # Mixed precision
     scaler = None
+    amp_dtype = None
     if config.mixed_precision == "fp16":
         scaler = torch.amp.GradScaler("cuda")
-        if is_main_process():
-            print("Mixed precision: FP16")
-    else:
-        if is_main_process():
-            print("Mixed precision: BF16 (autocast)")
+        amp_dtype = torch.float16
+    elif config.mixed_precision == "bf16":
+        amp_dtype = torch.bfloat16
+    
+    if is_main_process():
+        print(f"Mixed precision: {config.mixed_precision.upper()}{' (autocast)' if amp_dtype is not None else ''}")
+        if config.mixed_precision == "bf16" and not torch.cuda.is_bf16_supported():
+            print("  WARNING: GPU does not support BF16. Falling back to FP32.")
+            amp_dtype = None
     
     # ── DDP wrapping ────────────────────────────────────────────────
     if use_ddp:
@@ -601,7 +604,7 @@ def main(config: Config | None = None):
         
         global_step, epoch_loss = train_epoch(
             model, train_loader, optimizer, scheduler,
-            config, epoch, global_step, scaler, log_file,
+            config, epoch, global_step, scaler, amp_dtype, log_file,
         )
         
         # SWA update (main process only — DDP workers share weights via sync)

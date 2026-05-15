@@ -79,7 +79,7 @@ class BitNetTransformer(nn.Module):
         Args:
             input_ids: (batch, seq) token indices
             position_ids: (batch, seq) or None
-            labels: (batch, seq) for loss computation, shifted internally
+            labels: (batch, seq) for loss computation (dataset provides shifted labels)
             
         Returns:
             dict with 'logits', 'loss' (if labels provided), 'ppl'
@@ -108,12 +108,10 @@ class BitNetTransformer(nn.Module):
         result = {"logits": logits}
         
         if labels is not None:
-            # Shift for next-token prediction
-            shift_logits = logits[:, :-1, :].contiguous()
-            shift_labels = labels[:, 1:].contiguous()
+            # Dataset already shifts labels by 1 — use them directly
             loss = F.cross_entropy(
-                shift_logits.view(-1, self.vocab_size),
-                shift_labels.view(-1),
+                logits.view(-1, self.vocab_size),
+                labels.view(-1),
                 ignore_index=-100,
             )
             result["loss"] = loss
