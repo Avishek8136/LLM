@@ -11,6 +11,7 @@ import time
 import math
 import random
 import shutil
+import warnings
 from pathlib import Path
 from datetime import datetime
 
@@ -105,6 +106,14 @@ def create_scheduler(optimizer, config: Config):
             decayed = decayed + config.min_lr / config.learning_rate
             return max(decayed, config.min_lr / config.learning_rate)
     
+    # Suppress the false-positive warning that fires because both
+    # optimizer and scheduler start at internal step -1. The training
+    # loop always calls optimizer.step() before scheduler.step().
+    warnings.filterwarnings(
+        "ignore",
+        message="Detected call of.*lr_scheduler.step",
+        category=UserWarning,
+    )
     return LambdaLR(optimizer, lr_lambda)
 
 
