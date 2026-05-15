@@ -194,7 +194,7 @@ def check_gpu_compatibility() -> str:
         raise
     
     gpu_name = torch.cuda.get_device_name(0)
-    gpu_mem = torch.cuda.get_device_properties(0).total_mem / 1024**3
+    gpu_mem = torch.cuda.get_device_properties(0).total_memory / 1024**3
     
     print(f"GPU: {gpu_name} ({gpu_mem:.0f}GB, sm_{cc})")
     print(f"PyTorch: {torch.__version__} | CUDA: {torch.version.cuda}")
