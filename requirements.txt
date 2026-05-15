@@ -1,0 +1,22 @@
+# Core deep learning
+torch>=2.2.0
+torchvision>=0.17.0
+torchaudio>=2.2.0
+
+# HuggingFace ecosystem
+transformers>=4.40.0
+tokenizers>=0.15.0
+datasets>=2.16.0
+accelerate>=0.27.0
+
+# Training utilities
+wandb>=0.16.0
+numpy>=1.24.0
+safetensors>=0.4.0
+
+# Optional optimizers
+# lion-pytorch>=0.1.0  # uncomment for Lion optimizer support
+
+# Tokenizer training
+sentencepiece>=0.1.99
+tiktoken>=0.5.0
