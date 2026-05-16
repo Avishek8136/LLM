@@ -176,13 +176,17 @@ def save_checkpoint(
     
     base_name = f"checkpoint_step{step:06d}"
     path = os.path.join(config.checkpoint_dir, f"{base_name}.pt")
-    torch.save(checkpoint, path)
+    tmp_path = path + ".tmp"
+    torch.save(checkpoint, tmp_path)
+    os.replace(tmp_path, path)
     
-    # Save latest symlink
+    # Save latest symlink (atomic: write temp, then rename)
     latest_path = os.path.join(config.checkpoint_dir, "latest.pt")
-    if os.path.exists(latest_path) or os.path.islink(latest_path):
-        os.remove(latest_path)
-    os.symlink(f"{base_name}.pt", latest_path)
+    latest_tmp = latest_path + ".tmp"
+    if os.path.exists(latest_tmp) or os.path.islink(latest_tmp):
+        os.remove(latest_tmp)
+    os.symlink(f"{base_name}.pt", latest_tmp)
+    os.replace(latest_tmp, latest_path)
     
     # Cleanup old checkpoints
     _cleanup_old_checkpoints(config)
@@ -195,9 +199,20 @@ def save_checkpoint(
 
 
 def _cleanup_old_checkpoints(config: Config):
-    """Keep only last N checkpoints to save disk space."""
+    """Keep only last N checkpoints and remove stale .tmp files."""
+    all_files = os.listdir(config.checkpoint_dir)
+    
+    # Remove stale .tmp files from interrupted saves
+    for f in all_files:
+        if f.endswith(".tmp"):
+            tmp_path = os.path.join(config.checkpoint_dir, f)
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+    
     ckpt_files = sorted(
-        [f for f in os.listdir(config.checkpoint_dir) if f.startswith("checkpoint_step")],
+        [f for f in all_files if f.startswith("checkpoint_step") and f.endswith(".pt")],
         key=lambda x: os.path.getmtime(os.path.join(config.checkpoint_dir, x)),
     )
     while len(ckpt_files) > config.keep_last_n_checkpoints:
@@ -205,22 +220,41 @@ def _cleanup_old_checkpoints(config: Config):
         os.remove(os.path.join(config.checkpoint_dir, old))
 
 
+def _validate_checkpoint(path: str) -> bool:
+    """Check if a checkpoint file is readable (not corrupted)."""
+    try:
+        torch.load(path, map_location="cpu", weights_only=True)
+        return True
+    except Exception:
+        return False
+
+
 def find_latest_checkpoint(config: Config) -> str | None:
-    """Find the most recent checkpoint to resume from."""
+    """Find the most recent checkpoint to resume from, skipping corrupted ones."""
     if config.resume_from and os.path.exists(config.resume_from):
-        return config.resume_from
+        if _validate_checkpoint(config.resume_from):
+            return config.resume_from
+        print(f"  WARNING: Corrupted checkpoint, removing: {config.resume_from}")
+        os.remove(config.resume_from)
     
     latest_path = os.path.join(config.checkpoint_dir, "latest.pt")
     if os.path.exists(latest_path):
-        return latest_path
+        if _validate_checkpoint(latest_path):
+            return latest_path
+        print(f"  WARNING: Corrupted latest checkpoint, removing symlink.")
+        os.remove(latest_path)
     
-    # Search for any checkpoint
+    # Search for any valid checkpoint
     ckpt_files = sorted(
         [f for f in os.listdir(config.checkpoint_dir) if f.startswith("checkpoint_step") and f.endswith(".pt")],
         reverse=True,
     )
-    if ckpt_files:
-        return os.path.join(config.checkpoint_dir, ckpt_files[0])
+    for f in ckpt_files:
+        ckpt_path = os.path.join(config.checkpoint_dir, f)
+        if _validate_checkpoint(ckpt_path):
+            return ckpt_path
+        print(f"  WARNING: Corrupted checkpoint, removing: {ckpt_path}")
+        os.remove(ckpt_path)
     
     return None
 
@@ -237,7 +271,10 @@ def load_checkpoint(
         dict with 'step', 'epoch', 'metrics'
     """
     print(f"Loading checkpoint: {path}")
-    checkpoint = torch.load(path, map_location="cpu", weights_only=False)
+    try:
+        checkpoint = torch.load(path, map_location="cpu", weights_only=False)
+    except Exception as e:
+        raise RuntimeError(f"Failed to load checkpoint {path}: {e}") from e
     
     model.load_state_dict(checkpoint["model_state_dict"])
     

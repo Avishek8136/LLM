@@ -86,7 +86,7 @@ class Config:
     val_split_pct: float = 0.02
 
     # ── Checkpointing / Resume ─────────────────────────────────────────
-    save_every_steps: int = 2000
+    save_every_steps: int = 1000
     eval_every_steps: int = 500
     keep_last_n_checkpoints: int = 3
     save_optimizer: bool = True  # full resume support
